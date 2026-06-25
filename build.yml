@@ -1,0 +1,111 @@
+name: Build oneScript Tweak
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Xcode
+      uses: maxim-lobanov/setup-xcode@v1
+      with:
+        xcode-version: latest-stable
+
+    - name: Install Theos
+      run: |
+        echo "Installing Theos..."
+        bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+        echo "THEOS=$THEOS" >> $GITHUB_ENV
+        echo "THEOS_DEVICE_IP=$THEOS_DEVICE_IP" >> $GITHUB_ENV
+
+    - name: Cache Theos
+      uses: actions/cache@v3
+      with:
+        path: ~/theos
+        key: ${{ runner.os }}-theos-${{ hashFiles('**/Makefile') }}
+        restore-keys: |
+          ${{ runner.os }}-theos-
+
+    - name: Build Package
+      run: |
+        export THEOS=~/theos
+        export PATH=$THEOS/bin:$PATH
+        make clean
+        make package FINALPACKAGE=1
+      env:
+        THEOS: ~/theos
+
+    - name: List build artifacts
+      run: |
+        echo "Build artifacts:"
+        ls -la packages/
+        file packages/*.deb || true
+
+    - name: Upload DEB package
+      uses: actions/upload-artifact@v4
+      with:
+        name: oneScript-deb-package
+        path: packages/*.deb
+        retention-days: 30
+
+    - name: Upload raw dylib
+      uses: actions/upload-artifact@v4
+      with:
+        name: oneScript-dylib
+        path: .theos/obj/debug/*.dylib
+        retention-days: 30
+
+    - name: Create Release
+      if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: packages/*.deb
+        body: |
+          oneScript Tweak v2.1.0
+
+          Features:
+          - ESP (Boxes, Snaplines, Skeleton, Names)
+          - Aimbot (Aim Lock, Silent Aim, Triggerbot)
+          - Player Mods (Speed, Fly, FOV, Skin Changer)
+          - Teleport System
+          - Streamer Mode
+
+          Installation:
+          1. Install via Filza or Sileo
+          2. Respring device
+          3. Triple-tap to open menu
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-debug:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Theos
+      run: bash -c "$(curl -fsSL https://raw.githubusercontent.com/theos/theos/master/bin/install-theos)"
+
+    - name: Build Debug Package
+      run: |
+        export THEOS=~/theos
+        make package
+      env:
+        THEOS: ~/theos
+
+    - name: Upload Debug Package
+      uses: actions/upload-artifact@v4
+      with:
+        name: oneScript-debug-package
+        path: packages/*.deb
+        retention-days: 7
